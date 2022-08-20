@@ -1,0 +1,85 @@
+version: '3.9'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    env_file: envs/zk.env
+  
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - 9092:9092
+      - 9094:9094
+    env_file: envs/kafka.env
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
+  
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:6.0.1
+    container_name: control-center
+    hostname: control-center
+    depends_on:
+      - kafka
+    ports:
+      - 9021:9021
+    env_file: envs/cc.env
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
+    
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect-base:6.0.0
+    container_name: kafka-connect
+    depends_on:
+      - zookeeper
+      - kafka
+    ports:
+      - 8083:8083
+    env_file: envs/kc.env
+    volumes:
+      - $PWD/data:/data
+    command:
+      - bash
+      - -c
+      - |
+        echo "Installing Connector"
+        confluent-hub install --no-prompt confluentinc/kafka-connect-elasticsearch:10.0.1
+        #
+        echo "Launching Kafka Connect worker"
+        /etc/confluent/docker/run &
+        #
+        sleep infinity
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
+    
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.11.2
+    container_name: elasticsearch
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=es-docker-cluster
+      - cluster.initial_master_nodes=elasticsearch
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./elasticsearch:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
+  
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.11.2
+    container_name: kibana
+    ports:
+      - 5601:5601
+    env_file: envs/kibana.env
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
